@@ -62,55 +62,57 @@
     state: present
 
 # ─── Configure Firewall (UFW) ───────────────
-- name: Install UFW firewall
-  ansible.builtin.apt:
-    name: ufw
-    state: present
-
-- name: Allow SSH through firewall
-  community.general.ufw:
-    rule: allow
-    port: "22"
-    proto: tcp
-    comment: "SSH"
-
-- name: Allow control plane ports (master nodes only)
-  community.general.ufw:
-    rule: allow
-    port: "{{ item.port | string }}"
-    proto: "{{ item.proto }}"
-    comment: "{{ item.comment }}"
-  loop: "{{ control_plane_ports }}"
-  when: inventory_hostname in groups['control_plane']
-
-- name: Allow worker node ports (worker nodes only)
-  community.general.ufw:
-    rule: allow
-    port: "{{ item.port | string }}"
-    proto: "{{ item.proto }}"
-    comment: "{{ item.comment }}"
-  loop: "{{ worker_ports }}"
-  when: inventory_hostname in groups['workers']
-
-- name: Allow Calico VXLAN traffic between all cluster nodes
-  community.general.ufw:
-    rule: allow
-    port: "4789"
-    proto: udp
-    comment: "Calico VXLAN"
-
-- name: Allow Calico BGP traffic between all cluster nodes
-  community.general.ufw:
-    rule: allow
-    port: "179"
-    proto: tcp
-    comment: "Calico BGP"
-
-- name: Enable UFW with default deny incoming
-  community.general.ufw:
-    state: enabled
-    default: deny
-    direction: incoming
+# Disabling UFW for this test because enabling it drops the active Ansible SSH connection.
+# AWS Security Groups are already handling firewall rules.
+# - name: Install UFW firewall
+#   ansible.builtin.apt:
+#     name: ufw
+#     state: present
+# 
+# - name: Allow SSH through firewall
+#   community.general.ufw:
+#     rule: allow
+#     port: "22"
+#     proto: tcp
+#     comment: "SSH"
+# 
+# - name: Allow control plane ports (master nodes only)
+#   community.general.ufw:
+#     rule: allow
+#     port: "{{ item.port | string }}"
+#     proto: "{{ item.proto }}"
+#     comment: "{{ item.comment }}"
+#   loop: "{{ control_plane_ports }}"
+#   when: inventory_hostname in groups['control_plane']
+# 
+# - name: Allow worker node ports (worker nodes only)
+#   community.general.ufw:
+#     rule: allow
+#     port: "{{ item.port | string }}"
+#     proto: "{{ item.proto }}"
+#     comment: "{{ item.comment }}"
+#   loop: "{{ worker_ports }}"
+#   when: inventory_hostname in groups['workers']
+# 
+# - name: Allow Calico VXLAN traffic between all cluster nodes
+#   community.general.ufw:
+#     rule: allow
+#     port: "4789"
+#     proto: udp
+#     comment: "Calico VXLAN"
+# 
+# - name: Allow Calico BGP traffic between all cluster nodes
+#   community.general.ufw:
+#     rule: allow
+#     port: "179"
+#     proto: tcp
+#     comment: "Calico BGP"
+# 
+# - name: Enable UFW with default deny incoming
+#   community.general.ufw:
+#     state: enabled
+#     default: deny
+#     direction: incoming
 
 # ─── Set Hostname ───────────────────────────
 - name: Set hostname to inventory hostname

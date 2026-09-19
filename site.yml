@@ -1,0 +1,45 @@
+---
+##############################################
+# Site Playbook — Master Entry Point
+# Deploys a complete on-premises K8s cluster
+##############################################
+
+# ─── Phase 1: Prepare all nodes ─────────────
+- name: "Phase 1 — OS Prerequisites (all nodes)"
+  hosts: k8s_cluster
+  become: true
+  tags: [common]
+  roles:
+    - common
+
+# ─── Phase 2: Install container runtime ─────
+- name: "Phase 2 — Install containerd (all nodes)"
+  hosts: k8s_cluster
+  become: true
+  tags: [containerd]
+  roles:
+    - containerd
+
+# ─── Phase 3: Install K8s packages ──────────
+- name: "Phase 3 — Install kubeadm, kubelet, kubectl (all nodes)"
+  hosts: k8s_cluster
+  become: true
+  tags: [kubernetes]
+  roles:
+    - kubernetes
+
+# ─── Phase 4: Initialize control plane ──────
+- name: "Phase 4 — Initialize Control Plane (master only)"
+  hosts: control_plane
+  become: true
+  tags: [control_plane]
+  roles:
+    - control_plane
+
+# ─── Phase 5: Join worker nodes ─────────────
+- name: "Phase 5 — Join Worker Nodes to cluster"
+  hosts: workers
+  become: true
+  tags: [workers]
+  roles:
+    - workers

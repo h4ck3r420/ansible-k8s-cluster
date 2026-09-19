@@ -1,0 +1,126 @@
+---
+##############################################
+# Role: common
+# OS-level prerequisites for Kubernetes
+##############################################
+
+# ─── Disable Swap (required by kubelet) ──────
+- name: Disable swap immediately
+  ansible.builtin.command: swapoff -a
+  changed_when: true
+
+- name: Remove swap entries from /etc/fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '\sswap\s'
+    state: absent
+  notify: reboot node
+
+# ─── Load Required Kernel Modules ────────────
+- name: Load kernel modules for containerd
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ k8s_kernel_modules }}"
+
+- name: Persist kernel modules across reboots
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      {% for module in k8s_kernel_modules %}
+      {{ module }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+
+# ─── Configure Sysctl for Bridged Traffic ────
+- name: Set sysctl parameters for Kubernetes networking
+  ansible.builtin.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    reload: true
+    state: present
+  loop: "{{ k8s_sysctl_params }}"
+
+# ─── System Updates ─────────────────────────
+- name: Update apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+    state: present
+
+# ─── Configure Firewall (UFW) ───────────────
+- name: Install UFW firewall
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Allow SSH through firewall
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: "SSH"
+
+- name: Allow control plane ports (master nodes only)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ control_plane_ports }}"
+  when: inventory_hostname in groups['control_plane']
+
+- name: Allow worker node ports (worker nodes only)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ worker_ports }}"
+  when: inventory_hostname in groups['workers']
+
+- name: Allow Calico VXLAN traffic between all cluster nodes
+  community.general.ufw:
+    rule: allow
+    port: "4789"
+    proto: udp
+    comment: "Calico VXLAN"
+
+- name: Allow Calico BGP traffic between all cluster nodes
+  community.general.ufw:
+    rule: allow
+    port: "179"
+    proto: tcp
+    comment: "Calico BGP"
+
+- name: Enable UFW with default deny incoming
+  community.general.ufw:
+    state: enabled
+    default: deny
+    direction: incoming
+
+# ─── Set Hostname ───────────────────────────
+- name: Set hostname to inventory hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Add cluster nodes to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: ".*{{ hostvars[item].inventory_hostname }}$"
+    line: "{{ hostvars[item].ansible_host }} {{ hostvars[item].inventory_hostname }}"
+    state: present
+  loop: "{{ groups['k8s_cluster'] }}"

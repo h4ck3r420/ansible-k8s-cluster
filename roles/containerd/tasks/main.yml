@@ -1,0 +1,48 @@
+---
+##############################################
+# Role: containerd
+# Install and configure containerd runtime
+##############################################
+
+# ─── Install containerd ─────────────────────
+- name: Install containerd
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+
+# ─── Configure containerd ───────────────────
+- name: Create containerd config directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate default containerd config
+  ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+  notify: restart containerd
+
+- name: Enable SystemdCgroup in containerd config
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup\s*=\s*false'
+    replace: 'SystemdCgroup = true'
+  notify: restart containerd
+
+# ─── Start and Enable containerd ────────────
+- name: Enable and start containerd service
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# ─── Verify containerd is running ───────────
+- name: Wait for containerd socket to be ready
+  ansible.builtin.wait_for:
+    path: /run/containerd/containerd.sock
+    state: present
+    timeout: 30

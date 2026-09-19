@@ -1,0 +1,50 @@
+##############################################
+# Shared Variables for All Roles
+##############################################
+
+# ─── Kubernetes Version ──────────────────────
+k8s_version: "1.30"
+k8s_package_version: "1.30.*"
+
+# ─── Networking ──────────────────────────────
+pod_network_cidr: "192.168.0.0/16"    # Must match Calico default
+service_cidr: "10.96.0.0/12"
+cluster_dns: "10.96.0.10"
+
+# ─── Calico CNI ──────────────────────────────
+calico_version: "3.28.0"
+calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/v{{ calico_version }}/manifests/calico.yaml"
+
+# ─── Container Runtime ───────────────────────
+container_runtime: "containerd"
+containerd_version: "1.7.*"
+
+# ─── Control Plane ───────────────────────────
+# The admin user who will have kubectl access on the master
+k8s_admin_user: "ubuntu"
+
+# ─── Firewall Ports ─────────────────────────
+# Control plane ports
+control_plane_ports:
+  - { port: 6443,        proto: tcp, comment: "Kubernetes API server" }
+  - { port: 2379:2380,   proto: tcp, comment: "etcd server client API" }
+  - { port: 10250,       proto: tcp, comment: "Kubelet API" }
+  - { port: 10259,       proto: tcp, comment: "kube-scheduler" }
+  - { port: 10257,       proto: tcp, comment: "kube-controller-manager" }
+
+# Worker node ports
+worker_ports:
+  - { port: 10250,       proto: tcp, comment: "Kubelet API" }
+  - { port: 10256,       proto: tcp, comment: "kube-proxy" }
+  - { port: 30000:32767, proto: tcp, comment: "NodePort Services" }
+
+# ─── Kernel Modules ─────────────────────────
+k8s_kernel_modules:
+  - overlay
+  - br_netfilter
+
+# ─── Sysctl Settings ────────────────────────
+k8s_sysctl_params:
+  - { key: "net.bridge.bridge-nf-call-iptables",  value: 1 }
+  - { key: "net.bridge.bridge-nf-call-ip6tables", value: 1 }
+  - { key: "net.ipv4.ip_forward",                 value: 1 }

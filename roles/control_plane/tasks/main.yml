@@ -1,0 +1,91 @@
+---
+##############################################
+# Role: control_plane
+# Initialize the Kubernetes control plane
+##############################################
+
+# ─── Check if already initialized ───────────
+- name: Check if kubeadm has already been run
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_init_check
+
+# ─── Initialize Control Plane ───────────────
+- name: Initialize Kubernetes control plane with kubeadm
+  ansible.builtin.command: >
+    kubeadm init
+    --pod-network-cidr={{ pod_network_cidr }}
+    --service-cidr={{ service_cidr }}
+    --kubernetes-version=v{{ k8s_version }}.0
+    --control-plane-endpoint={{ ansible_host }}
+    --upload-certs
+  register: kubeadm_init_output
+  when: not kubeadm_init_check.stat.exists
+  changed_when: true
+
+# ─── Configure kubectl for admin user ───────
+- name: Create .kube directory for admin user
+  ansible.builtin.file:
+    path: "/home/{{ k8s_admin_user }}/.kube"
+    state: directory
+    owner: "{{ k8s_admin_user }}"
+    group: "{{ k8s_admin_user }}"
+    mode: "0755"
+
+- name: Copy admin kubeconfig to user's home
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ k8s_admin_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ k8s_admin_user }}"
+    group: "{{ k8s_admin_user }}"
+    mode: "0600"
+
+# ─── Install Calico CNI ─────────────────────
+- name: Install Calico pod network addon
+  ansible.builtin.command: >
+    kubectl apply -f {{ calico_manifest_url }}
+  become: true
+  become_user: "{{ k8s_admin_user }}"
+  environment:
+    KUBECONFIG: "/home/{{ k8s_admin_user }}/.kube/config"
+  register: calico_result
+  changed_when: "'created' in calico_result.stdout or 'configured' in calico_result.stdout"
+
+# ─── Wait for Control Plane to be Ready ─────
+- name: Wait for all control plane pods to be ready
+  ansible.builtin.command: >
+    kubectl wait --for=condition=Ready pods --all -n kube-system --timeout=120s
+  become: true
+  become_user: "{{ k8s_admin_user }}"
+  environment:
+    KUBECONFIG: "/home/{{ k8s_admin_user }}/.kube/config"
+  retries: 5
+  delay: 15
+  register: wait_result
+  until: wait_result.rc == 0
+  changed_when: false
+
+# ─── Generate Join Command for Workers ──────
+- name: Generate kubeadm join command
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: join_command
+  changed_when: false
+
+- name: Store join command as a host fact
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ join_command.stdout }}"
+
+# ─── Verify Control Plane ───────────────────
+- name: Get cluster node status
+  ansible.builtin.command: kubectl get nodes -o wide
+  become: true
+  become_user: "{{ k8s_admin_user }}"
+  environment:
+    KUBECONFIG: "/home/{{ k8s_admin_user }}/.kube/config"
+  register: node_status
+  changed_when: false
+
+- name: Display cluster node status
+  ansible.builtin.debug:
+    msg: "{{ node_status.stdout_lines }}"

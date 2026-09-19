@@ -1,0 +1,5 @@
+---
+- name: reboot node
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    msg: "Rebooting after swap removal"

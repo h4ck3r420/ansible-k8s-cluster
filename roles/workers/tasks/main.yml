@@ -1,0 +1,53 @@
+---
+##############################################
+# Role: workers
+# Join worker nodes to the K8s cluster
+##############################################
+
+# ─── Check if already joined ────────────────
+- name: Check if node has already joined the cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf_check
+
+# ─── Retrieve Join Command from Master ──────
+- name: Get join command from control plane
+  ansible.builtin.set_fact:
+    join_command: "{{ hostvars[groups['control_plane'][0]].kubeadm_join_command }}"
+  when: not kubelet_conf_check.stat.exists
+
+# ─── Join the Cluster ───────────────────────
+- name: Join worker node to the Kubernetes cluster
+  ansible.builtin.command: "{{ join_command }}"
+  register: join_result
+  when: not kubelet_conf_check.stat.exists
+  changed_when: true
+
+- name: Display join result
+  ansible.builtin.debug:
+    msg: "{{ join_result.stdout_lines | default(['Node already joined to cluster']) }}"
+
+# ─── Verify Node Joined ─────────────────────
+- name: Wait for kubelet to be active
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+    enabled: true
+
+# ─── Label Worker Nodes ─────────────────────
+# Run from the control plane to label the worker
+- name: Label worker nodes with node-role
+  ansible.builtin.command: >
+    kubectl label node {{ inventory_hostname }}
+    node-role.kubernetes.io/worker=worker
+    --overwrite
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  become: true
+  become_user: "{{ k8s_admin_user }}"
+  environment:
+    KUBECONFIG: "/home/{{ k8s_admin_user }}/.kube/config"
+  changed_when: true
+  retries: 3
+  delay: 10
+  register: label_result
+  until: label_result.rc == 0

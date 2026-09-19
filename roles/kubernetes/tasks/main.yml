@@ -1,0 +1,59 @@
+---
+##############################################
+# Role: kubernetes
+# Install kubeadm, kubelet, kubectl
+##############################################
+
+# ─── Add Kubernetes APT Repository ──────────
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Kubernetes APT signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: "0644"
+
+- name: De-armor and install Kubernetes APT key
+  ansible.builtin.shell: >
+    cat /tmp/kubernetes-release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add Kubernetes APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+    filename: kubernetes
+    state: present
+    update_cache: true
+
+# ─── Install Packages ───────────────────────
+- name: Install kubeadm, kubelet, kubectl
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ k8s_package_version }}"
+      - "kubeadm={{ k8s_package_version }}"
+      - "kubectl={{ k8s_package_version }}"
+    state: present
+    allow_downgrade: true
+
+# ─── Pin Package Versions ───────────────────
+# Prevent apt from auto-upgrading K8s components
+- name: Hold Kubernetes packages at current version
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+# ─── Enable kubelet ─────────────────────────
+- name: Enable kubelet service (will start after kubeadm init/join)
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    daemon_reload: true
